@@ -33,35 +33,45 @@ export class Game {
         console.log("Plateau initialiser : ", board);
         return board;
     }
+    
 
-    // Déplace une pièce, vérifie si elle peut capturer, et retourne true si le mouvement est valide
-    // movePiece(startRow: number, startCol: number, endRow: number, endCol: number): boolean {
-    //     const player = this.board[startRow][startCol];
-    //     const opponent = player === "B" ? "W" : "B";
+    // Réalise un mouvement de capture et vérifie les captures en chaîne
+movePiece(startRow: number, startCol: number, endRow: number, endCol: number): boolean {
+    const player = this.board[startRow][startCol];
+    const opponent = player === "B" ? "W" : "B";
 
-    //     // Vérifie si le mouvement est un saut avec capture
-    //     if (this.board[endRow][endCol] === " " && Math.abs(startRow - endRow) === 2) {
-    //         const midRow = (startRow + endRow) / 2;
-    //         const midCol = (startCol + endCol) / 2;
+    // Vérifie si le mouvement est un saut avec capture
+    if (this.board[endRow][endCol] === " " && Math.abs(startRow - endRow) === 2 && Math.abs(startCol - endCol) === 2) {
+        const midRow = (startRow + endRow) / 2;
+        const midCol = (startCol + endCol) / 2;
 
-    //         if (this.board[midRow][midCol] === opponent) {
-    //             // Effectue la capture
-    //             this.board[endRow][endCol] = player;
-    //             this.board[startRow][startCol] = " ";
-    //             this.board[midRow][midCol] = " "; // Retire le pion capturé
-    //             return true;
-    //         }
-    //     }
-    //     return false;
-    // }
-    movePiece(startRow: number, startCol: number, endRow: number, endCol: number): boolean {
-        if (this.board[endRow][endCol] === " " && Math.abs(startRow - endRow) === 1 && Math.abs(startCol - endCol) === 1) {
-            this.board[endRow][endCol] = this.board[startRow][startCol];
+        if (this.board[midRow][midCol] === opponent) {
+            // Effectue la capture
+            this.board[endRow][endCol] = player;
             this.board[startRow][startCol] = " ";
+            this.board[midRow][midCol] = " "; // Retire le pion capturé
+
+            // Vérifie les captures en chaîne
+            const additionalCaptures = this.getCaptureMoves(player, endRow, endCol);
+            if (additionalCaptures.length > 0) {
+                this.selectedPiece = { row: endRow, col: endCol }; // Permet au joueur de capturer de nouveau
+            } else {
+                this.selectedPiece = null;
+            }
             return true;
         }
-        return false;
     }
+    // Déplacement sans capture (une seule case)
+    else if (this.board[endRow][endCol] === " " && Math.abs(startRow - endRow) === 1 && Math.abs(startCol - endCol) === 1) {
+        this.board[endRow][endCol] = player;
+        this.board[startRow][startCol] = " ";
+        this.selectedPiece = null; // Terminer le tour
+        return true;
+    }
+
+    return false; // Mouvement invalide
+}
+    
     
 
     // Renvoie tous les mouvements possibles pour un joueur donné
@@ -98,17 +108,97 @@ export class Game {
             }
         }
     }
+
     
-    // Gère le tour de l'ordinateur en choisissant un mouvement aléatoire
-    computerTurn() {
+// Renvoie les mouvements de capture possibles pour un joueur donné (inclut les captures en arrière)
+getCaptureMoves(player: string, startRow?: number, startCol?: number): Move[] {
+    const moves: Move[] = [];
+    const directions = [1, -1]; // Autorise les captures en avant et en arrière
+    const opponent = player === "B" ? "W" : "B";
+
+    // Si `startRow` et `startCol` sont définis, nous vérifions uniquement les mouvements depuis cette position
+    const rowsToCheck = startRow !== undefined ? [startRow] : Array.from({ length: 10 }, (_, i) => i);
+    const colsToCheck = startCol !== undefined ? [startCol] : Array.from({ length: 10 }, (_, i) => i);
+
+    for (let row of rowsToCheck) {
+        for (let col of colsToCheck) {
+            if (this.board[row][col] === player) {
+                for (let dir of directions) {
+                    // Vérifie les captures en diagonale gauche et droite
+                    if (this.isValidCaptureMove(row, col, row + 2 * dir, col - 2, opponent)) {
+                        moves.push({ startRow: row, startCol: col, endRow: row + 2 * dir, endCol: col - 2 });
+                    }
+                    if (this.isValidCaptureMove(row, col, row + 2 * dir, col + 2, opponent)) {
+                        moves.push({ startRow: row, startCol: col, endRow: row + 2 * dir, endCol: col + 2 });
+                    }
+                }
+            }
+        }
+    }
+    return moves;
+}
+
+// Vérifie si un mouvement de capture est valide
+isValidCaptureMove(startRow: number, startCol: number, endRow: number, endCol: number, opponent: string): boolean {
+    if (endRow >= 0 && endRow < 10 && endCol >= 0 && endCol < 10 && this.board[endRow][endCol] === " ") {
+        const midRow = (startRow + endRow) / 2;
+        const midCol = (startCol + endCol) / 2;
+        return this.board[midRow][midCol] === opponent;
+    }
+    return false;
+}
+
+// Gère le tour de l'ordinateur avec un seul pion actif et un délai pour chaque mouvement
+computerTurn() {
+    // Vérifie si des captures sont possibles avec un pion au hasard
+    const captureMoves = this.getCaptureMoves("W");
+    if (captureMoves.length > 0) {
+        // Sélectionne un mouvement de capture au hasard
+        const randomCaptureMove = captureMoves[Math.floor(Math.random() * captureMoves.length)];
+        
+        // Active les captures en chaîne uniquement pour le pion sélectionné
+        let currentRow = randomCaptureMove.startRow;
+        let currentCol = randomCaptureMove.startCol;
+
+        const executeCaptureChain = () => {
+            this.movePiece(currentRow, currentCol, randomCaptureMove.endRow, randomCaptureMove.endCol);
+            this.displayBoard();
+            currentRow = randomCaptureMove.endRow;
+            currentCol = randomCaptureMove.endCol;
+            
+            // Vérifie si des captures supplémentaires sont possibles pour ce pion
+            const nextCaptures = this.getCaptureMoves("W", currentRow, currentCol);
+            if (nextCaptures.length > 0) {
+                // Continue la capture en chaîne avec le même pion, avec un délai
+                const nextCapture = nextCaptures[Math.floor(Math.random() * nextCaptures.length)];
+                randomCaptureMove.startRow = nextCapture.startRow;
+                randomCaptureMove.startCol = nextCapture.startCol;
+                randomCaptureMove.endRow = nextCapture.endRow;
+                randomCaptureMove.endCol = nextCapture.endCol;
+                setTimeout(executeCaptureChain, 1000); // Délai de 1 seconde entre chaque capture
+            } else {
+                // Fin de la capture en chaîne, passe au joueur
+                this.isPlayerTurn = true;
+            }
+        };
+
+        // Démarre la capture en chaîne avec le délai initial
+        setTimeout(executeCaptureChain, 1000); // Délai de 1 seconde avant la première capture
+    } else {
+        // Si aucune capture n'est possible, effectue un mouvement simple avec un seul pion
         const possibleMoves = this.getPossibleMoves("W");
         if (possibleMoves.length > 0) {
             const randomMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
-            this.movePiece(randomMove.startRow, randomMove.startCol, randomMove.endRow, randomMove.endCol);
-            this.displayBoard();
+            setTimeout(() => {
+                this.movePiece(randomMove.startRow, randomMove.startCol, randomMove.endRow, randomMove.endCol);
+                this.displayBoard();
+                this.isPlayerTurn = true; // Passe au tour du joueur après le mouvement
+            }, 1000); // Délai de 1 seconde avant le mouvement simple
         }
-        this.isPlayerTurn = true;
     }
+}
+
+
 
     displayBoard(): void {
         const boardElement = document.getElementById("board");
@@ -182,19 +272,29 @@ export class Game {
             const startRow = this.selectedPiece.row;
             const startCol = this.selectedPiece.col;
             console.log("Tentative de déplacement de :", startRow, startCol, "vers", row, col);
-
     
             if (this.movePiece(startRow, startCol, row, col)) { // Si le mouvement est valide
                 console.log("Déplacement réussi de", startRow, startCol, "à", row, col);
                 this.displayBoard(); // Met à jour l'affichage
-                this.selectedPiece = null; // Réinitialise la sélection
-                this.isPlayerTurn = false; // Passe au tour de l'ordinateur
-                setTimeout(() => this.computerTurn(), 500); // Lance le tour de l'ordinateur après une courte pause
+                this.selectedPiece = { row, col }; // Met à jour la position du pion sélectionné pour une capture en chaîne
+    
+                // Vérifie si d'autres captures sont possibles depuis cette nouvelle position
+                const additionalCaptures = this.getCaptureMoves("B", row, col);
+                if (additionalCaptures.length > 0) {
+                    console.log("Captures en chaîne disponibles, le joueur peut continuer.");
+                    // Laisse `this.isPlayerTurn` à `true` pour permettre au joueur de continuer la capture en chaîne
+                } else {
+                    console.log("Aucune capture en chaîne disponible, fin du tour du joueur.");
+                    this.selectedPiece = null; // Réinitialise la sélection
+                    this.isPlayerTurn = false; // Passe au tour de l'ordinateur
+                    setTimeout(() => this.computerTurn(), 500); // Lance le tour de l'ordinateur après une courte pause
+                }
             } else {
                 console.log("Déplacement invalide.");
             }
         }
     }
+    
     
     
     
